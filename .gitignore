@@ -1,10 +1,9 @@
-/node_modules/
-/dist/
 /build/
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/release-version.json
 *.log
 .DS_Store
 .env
 .env.*
 !.env.example
-*.tsbuildinfo
-coverage/

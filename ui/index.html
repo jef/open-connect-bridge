@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost"
+    />
+    <title>Open Connect Bridge</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <img class="brand-mark" src="golf-icon.svg" alt="" />
+          <div>
+            <div class="eyebrow">FORESIGHT · OPEN CONNECT</div>
+            <h1>Bridge</h1>
+          </div>
+        </div>
+        <div class="live-pill" id="live-pill"><i></i><span id="live-label">Not running</span></div>
+      </header>
+
+      <main>
+        <section class="intro">
+          <div>
+            <p class="eyebrow">LAUNCH MONITOR RELAY</p>
+            <h2>Every shot, right where it belongs.</h2>
+            <p class="subhead">Choose your source and connect it to your Open Connect listener.</p>
+          </div>
+          <svg class="ball-art" viewBox="0 0 175 145" aria-hidden="true" focusable="false">
+            <defs>
+              <radialGradient id="ball-shading" cx="32%" cy="24%" r="75%">
+                <stop offset="0" stop-color="#f5fff9" />
+                <stop offset="0.5" stop-color="#c1e9d5" />
+                <stop offset="1" stop-color="#609d7c" />
+              </radialGradient>
+              <pattern id="ball-dimples" width="17" height="15" patternUnits="userSpaceOnUse">
+                <circle cx="4.25" cy="3.75" r="2.3" fill="#4a8d6b" fill-opacity="0.26" />
+                <circle cx="12.75" cy="11.25" r="2.3" fill="#4a8d6b" fill-opacity="0.26" />
+                <path
+                  d="M2.6 4.7a2.3 2.3 0 0 0 3.3 0m5.2 7.5a2.3 2.3 0 0 0 3.3 0"
+                  fill="none"
+                  stroke="#f3fff8"
+                  stroke-opacity="0.45"
+                  stroke-width="0.7"
+                />
+              </pattern>
+            </defs>
+            <ellipse cx="87.5" cy="130" rx="43" ry="5" fill="#78e2b5" opacity="0.12" />
+            <circle cx="87.5" cy="70" r="51" fill="url(#ball-shading)" />
+            <circle cx="87.5" cy="70" r="51" fill="url(#ball-dimples)" />
+            <circle cx="87.5" cy="70" r="50.5" fill="none" stroke="#d7f8e6" stroke-opacity="0.45" />
+          </svg>
+        </section>
+
+        <div class="columns">
+          <div class="left-column">
+            <section class="panel setup-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">01 / SETUP</p>
+                  <h3>Connection</h3>
+                </div>
+              </div>
+
+              <label class="field-label" for="source">Launch monitor app</label>
+              <div class="source-options">
+                <label class="source-option">
+                  <input type="radio" name="source" value="gspro" checked />
+                  <span class="source-icon">G</span>
+                  <span><strong>GSPconnect</strong><small>GSPro connector</small></span>
+                </label>
+                <label class="source-option">
+                  <input type="radio" name="source" value="premier" />
+                  <span class="source-icon">F</span>
+                  <span><strong>Foresight Premier</strong><small>Shot history</small></span>
+                </label>
+              </div>
+              <p class="target-note" id="source-lock-note" hidden>
+                Stop the bridge to change sources.
+              </p>
+
+              <div class="source-help">
+                <p id="gspro-help">Keep GSPconnect open while using the bridge.</p>
+                <p id="premier-help" hidden>
+                  In Foresight Premier, open a Shot Analysis session. Shots must be logged there to
+                  register in the bridge.
+                </p>
+                <div class="launch-row">
+                  <button class="launch-button" id="launch-button">Open GSPconnect</button>
+                  <button class="location-button" id="choose-app-button">Change location</button>
+                </div>
+                <p class="launch-note" id="launch-note" aria-live="polite">
+                  Uses the default location, or asks you to choose the app.
+                </p>
+              </div>
+
+              <label class="field-label" for="host"
+                >Open Connect target IP or hostname and port</label
+              >
+              <div class="input-row">
+                <input
+                  id="host"
+                  type="text"
+                  value="127.0.0.1"
+                  spellcheck="false"
+                  aria-describedby="target-note"
+                />
+                <span class="port-separator">:</span>
+                <input
+                  id="port"
+                  class="port-input"
+                  type="number"
+                  value="921"
+                  min="1"
+                  max="65535"
+                  aria-label="Open Connect target port"
+                  aria-describedby="target-note"
+                />
+              </div>
+              <p class="target-note" id="target-note" aria-live="polite">
+                Use the mobile device's IP address if the listener is not on this computer.
+              </p>
+
+              <div id="gspro-settings">
+                <label class="field-label" for="log"
+                  >GSPconnect log file
+                  <span class="muted">(default location prefilled)</span></label
+                >
+                <div class="browse-row">
+                  <input id="log" type="text" spellcheck="false" /><button
+                    class="browse-button"
+                    data-browse="log"
+                    aria-label="Browse for log file"
+                  >
+                    Browse
+                  </button>
+                </div>
+                <label class="field-label compact-label" for="gspro-port">GSPconnect port</label>
+                <input
+                  id="gspro-port"
+                  class="narrow-input"
+                  type="number"
+                  value="9050"
+                  min="1"
+                  max="65535"
+                />
+              </div>
+
+              <div id="premier-settings" hidden>
+                <label class="field-label" for="history"
+                  >Premier history file
+                  <span class="muted">(default location prefilled)</span></label
+                >
+                <div class="browse-row">
+                  <input id="history" type="text" spellcheck="false" /><button
+                    class="browse-button"
+                    data-browse="history"
+                    aria-label="Browse for history file"
+                  >
+                    Browse
+                  </button>
+                </div>
+              </div>
+
+              <label class="field-label compact-label" for="heartbeat"
+                >Heartbeat interval <span class="muted">(seconds)</span></label
+              >
+              <input
+                id="heartbeat"
+                class="narrow-input"
+                type="number"
+                value="5"
+                min="0.1"
+                step="0.1"
+              />
+
+              <div class="action-row">
+                <button class="primary-button" id="start-button">
+                  <span class="play-icon">▶</span> Start bridge
+                </button>
+                <button class="stop-button" id="stop-button" disabled>Stop</button>
+              </div>
+              <p class="form-error" id="form-error" role="alert"></p>
+            </section>
+          </div>
+
+          <div class="right-column">
+            <section class="panel status-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">02 / LIVE STATUS</p>
+                  <h3>Bridge activity</h3>
+                </div>
+                <span class="source-tag" id="status-source">—</span>
+              </div>
+
+              <div class="stat-grid">
+                <div class="stat-card shot-stat">
+                  <span class="stat-label">SHOTS SENT</span><strong id="shots">0</strong
+                  ><span class="stat-foot">Since bridge started</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">OPEN CONNECT</span
+                  ><strong class="status-value" id="open-connect">Not connected</strong
+                  ><span class="stat-foot">Listener connection</span>
+                </div>
+              </div>
+
+              <div class="detail-list">
+                <div class="detail-row">
+                  <span>Watching</span><strong id="watching">Choose a source to begin</strong>
+                </div>
+                <div class="detail-row">
+                  <span>Last shot</span><strong id="last-shot">Waiting for first shot</strong>
+                </div>
+                <div class="detail-row">
+                  <span>Simulator reply</span><strong id="sim-reply">—</strong>
+                </div>
+                <div class="detail-row">
+                  <span>GSPconnect</span><strong id="gspro-status">—</strong>
+                </div>
+              </div>
+              <div class="error-banner" id="error-banner" hidden>
+                <span>!</span>
+                <p id="last-error"></p>
+              </div>
+            </section>
+
+            <section class="panel log-panel">
+              <div class="section-heading log-heading">
+                <div>
+                  <p class="eyebrow">ACTIVITY</p>
+                  <h3>Recent events</h3>
+                </div>
+                <span class="live-dot"></span>
+              </div>
+              <div class="event-list" id="event-list">
+                <div class="empty-state">Your connection events will show up here.</div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <footer>
+          <span>OPEN CONNECT BRIDGE</span><span>Local connection · No cloud account required</span>
+        </footer>
+      </main>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

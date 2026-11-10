@@ -17,36 +17,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run format:check
-      - run: npm test
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - run: cargo +stable fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: cargo +stable clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: cargo +stable test --locked --manifest-path src-tauri/Cargo.toml
+      - run: rustc --edition 2024 --test scripts/release-plan.rs -o release-plan-test && ./release-plan-test
 
   plan:
     name: Calculate version
     needs: check
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
-      version: ${{ steps.release.outputs.version }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - id: release
-        run: node scripts/release.mjs --dry-run
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - id: version
+        run: |
+          rustc --edition 2024 scripts/release-plan.rs -o release-plan
+          version=$(./release-plan)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.platform }}
@@ -58,32 +50,53 @@ jobs:
         include:
           - platform: windows
             os: windows-latest
-            command: package:win
-            files: build/release/*.exe
           - platform: linux
             os: ubuntu-latest
-            command: package:linux
-            files: build/release/*.tar.gz
           - platform: macos
             os: macos-latest
-            command: package:mac
-            files: build/release/*.dmg
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npm version "${{ needs.plan.outputs.version }}" --no-git-tag-version --allow-same-version --ignore-scripts
-      - run: npm run ${{ matrix.command }}
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - run: rustup toolchain install stable --profile minimal
+      - name: Install macOS Rust targets
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+      - run: cargo install tauri-cli --version 2.12.4 --locked
+      - name: Build release artifacts
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          VERSION: ${{ needs.plan.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/release
+          printf '{"version":"%s"}' "$VERSION" > src-tauri/release-version.json
+          if [ "$PLATFORM" = windows ]; then
+            cargo tauri build --config src-tauri/release-version.json --no-bundle -- --locked
+            cp src-tauri/target/release/open-connect-bridge.exe build/release/open-connect-bridge.exe
+          elif [ "$PLATFORM" = linux ]; then
+            cargo tauri build --config src-tauri/release-version.json --no-bundle -- --locked
+            tar -C src-tauri/target/release -czf "build/release/open-connect-bridge-$VERSION-linux-x64.tar.gz" open-connect-bridge
+          else
+            for entry in "x64:x86_64-apple-darwin" "arm64:aarch64-apple-darwin"; do
+              arch="${entry%%:*}"
+              target="${entry#*:}"
+              cargo tauri build --config src-tauri/release-version.json --target "$target" --bundles dmg -- --locked
+              shopt -s nullglob
+              files=(src-tauri/target/"$target"/release/bundle/dmg/*.dmg)
+              [ "${#files[@]}" -eq 1 ]
+              cp "${files[0]}" "build/release/open-connect-bridge-$VERSION-mac-$arch.dmg"
+            done
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}
-          path: ${{ matrix.files }}
+          path: build/release/*
           if-no-files-found: error
 
   publish:
@@ -96,17 +109,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
       - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: build/release
           merge-multiple: true
-      - run: node scripts/release.mjs
+      - name: Verify and publish release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EXPECTED_RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          rustc --edition 2024 scripts/release-plan.rs -o release-plan
+          [ "$(./release-plan)" = "$VERSION" ]
+          for file in "open-connect-bridge.exe" "open-connect-bridge-$VERSION-linux-x64.tar.gz" "open-connect-bridge-$VERSION-mac-x64.dmg" "open-connect-bridge-$VERSION-mac-arm64.dmg"; do
+            test -s "build/release/$file"
+          done
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --draft --title "v$VERSION" --generate-notes build/release/*
+          gh release edit "v$VERSION" --draft=false
