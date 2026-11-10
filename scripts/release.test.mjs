@@ -7,6 +7,13 @@ import { analyzeCommits } from "@semantic-release/commit-analyzer";
 import config from "../release.config.mjs";
 import { verifyRelease } from "./verify-release.mjs";
 
+test("packaging commands do not publish artifacts independently", () => {
+  const { scripts } = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url)));
+  for (const name of ["package:win", "package:linux", "package:linux:appimage", "package:mac"]) {
+    assert.match(scripts[name], /\belectron-builder\b.*\s--publish\s+never(?:\s|$)/, name);
+  }
+});
+
 test("conventional commit rules select the intended version bump", async () => {
   const rules = config.plugins[0][1];
   const logger = { log() {} };

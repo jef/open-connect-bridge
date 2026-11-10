@@ -14,11 +14,11 @@
     "format:check": "oxfmt --check",
     "start": "node dist/index.js",
     "test": "tsc && vitest run",
-    "package:win": "npm run package:prepare && electron-builder --win portable --x64",
+    "package:win": "npm run package:prepare && electron-builder --win portable --x64 --publish never",
     "package:prepare": "tsc && node scripts/package.mjs",
-    "package:linux": "npm run package:prepare && electron-builder --linux tar.gz --x64",
-    "package:linux:appimage": "npm run package:prepare && electron-builder --linux AppImage --x64",
-    "package:mac": "npm run package:prepare && electron-builder --mac dmg --x64 --arm64"
+    "package:linux": "npm run package:prepare && electron-builder --linux tar.gz --x64 --publish never",
+    "package:linux:appimage": "npm run package:prepare && electron-builder --linux AppImage --x64 --publish never",
+    "package:mac": "npm run package:prepare && electron-builder --mac dmg --x64 --arm64 --publish never"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
