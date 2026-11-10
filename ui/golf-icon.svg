@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="ball" cx="30%" cy="25%" r="75%">
+      <stop stop-color="#f5fff9"/>
+      <stop offset=".55" stop-color="#c1e9d5"/>
+      <stop offset="1" stop-color="#609d7c"/>
+    </radialGradient>
+    <pattern id="dimples" width="57" height="50" patternUnits="userSpaceOnUse">
+      <circle cx="14" cy="12" r="8" fill="#4a8d6b" opacity=".3"/>
+      <circle cx="43" cy="37" r="8" fill="#4a8d6b" opacity=".3"/>
+    </pattern>
+  </defs>
+  <rect x="12" y="12" width="488" height="488" rx="120" fill="#13251f"/>
+  <circle cx="256" cy="256" r="186" fill="url(#ball)"/>
+  <circle cx="256" cy="256" r="186" fill="url(#dimples)"/>
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#d7f8e6" stroke-opacity=".5" stroke-width="4"/>
+</svg>

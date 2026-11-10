@@ -12,7 +12,7 @@ Send shots from your Foresight launch monitor to an Open Connect-compatible golf
 
 ## Get started
 
-1. Download the latest app from [GitHub Releases](https://github.com/jef/open-connect-bridge/releases) when a release is available, and open it. The packaged app doesn't require Node.js or Python.
+1. Download the latest app from [GitHub Releases](https://github.com/jef/open-connect-bridge/releases) and open it. The app doesn't require Node.js or Python. Windows requires the WebView2 runtime.
 2. Select **GSPconnect** or **Foresight Premier** in the bridge.
 3. Open your selected app:
    - **GSPconnect:** Keep the connector open while using the bridge.
@@ -20,6 +20,8 @@ Send shots from your Foresight launch monitor to an Open Connect-compatible golf
 4. Start your Open Connect-compatible simulator, then select **Start bridge**. New shots should appear in the bridge's live status.
 
 Use the **Open** button to launch your selected app from the bridge. If it isn't found automatically, choose its location when prompted. You can change that location later with **Change location**.
+
+Stop the bridge before switching between GSPconnect and Foresight Premier.
 
 The window adjusts its height as the contents change and remains manually resizable. On smaller screens, scroll to see any content that doesn't fit.
 
@@ -35,10 +37,20 @@ If it runs on a phone, tablet, or another computer, enter that device's reachabl
 - **Not connected?** Check that your simulator's Open Connect listener is running and that the target address and port are correct.
 - **App not found?** Use **Change location** to select GSPconnect or Foresight Premier. The bridge also lets you browse for a log or history file if your installation uses a nonstandard location.
 
-Windows and macOS builds are unsigned, so your operating system may show a security warning.
+Windows and macOS builds are unsigned, so your operating system may show a security warning. On Linux, the tarball requires WebKitGTK 4.1 and the other Tauri runtime libraries provided by your distribution.
+
+GSPconnect and Foresight Premier run on Windows, so only the Windows build detects their default locations. On macOS and Linux, use **Browse** to choose the log or history file, for example from a shared folder.
 
 ## Building from source
 
-Install [Volta](https://volta.sh/) to use the project's pinned Node.js version, then run `npm install`. Use `npm run package:win`, `npm run package:linux`, or `npm run package:mac` to build an app. macOS packaging requires macOS.
+Install [Rust](https://rustup.rs/) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system. Install the Rust Tauri CLI with `cargo install tauri-cli --version 2.12.4 --locked`, then run:
 
-Run `npm test` for tests, `npm run lint` for linting, and `npm run format:check` to check formatting.
+```text
+cargo tauri build
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+```
+
+For the command-line bridge, use `cargo run --manifest-path src-tauri/Cargo.toml --bin bridge-cli -- --help`. macOS builds require macOS; Linux builds require Linux.
+
+The Rust bridge has simulated integration coverage but has not yet been verified with real launch-monitor hardware.
