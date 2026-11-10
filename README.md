@@ -39,6 +39,8 @@ If it runs on a phone, tablet, or another computer, enter that device's reachabl
 
 Windows and macOS builds are unsigned, so your operating system may show a security warning. On Linux, the tarball requires WebKitGTK 4.1 and the other Tauri runtime libraries provided by your distribution.
 
+GSPconnect and Foresight Premier run on Windows, so only the Windows build detects their default locations. On macOS and Linux, use **Browse** to choose the log or history file, for example from a shared folder.
+
 ## Building from source
 
 Install [Rust](https://rustup.rs/) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system. Install the Rust Tauri CLI with `cargo install tauri-cli --version 2.12.4 --locked`, then run:

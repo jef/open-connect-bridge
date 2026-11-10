@@ -8,7 +8,7 @@ use std::{
     net::{TcpListener, TcpStream, ToSocketAddrs},
     path::Path,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
     thread,
@@ -29,7 +29,7 @@ pub struct Options {
     pub heartbeat: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Config {
     pub app: String,
     pub host: String,
@@ -102,8 +102,13 @@ pub struct Snapshot {
 
 pub type Shared = Arc<Mutex<Snapshot>>;
 
+/// The status is plain data, so a panic in another thread shouldn't take the app down with it.
+pub fn lock(shared: &Shared) -> MutexGuard<'_, Snapshot> {
+    shared.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 fn update(shared: &Shared, f: impl FnOnce(&mut Snapshot), log: Option<String>) {
-    let mut s = shared.lock().expect("bridge status lock poisoned");
+    let mut s = lock(shared);
     f(&mut s);
     if let Some(line) = log {
         s.logs.push(line);
@@ -117,8 +122,54 @@ struct Relay {
     config: Config,
     shared: Shared,
     stream: Option<TcpStream>,
+    replies: Vec<u8>,
     number: u64,
     next: Instant,
+}
+
+/// Replies may arrive split across reads or several at once, so complete JSON
+/// values (or newline-terminated text) are taken from the buffer one at a time.
+fn drain_replies(buffer: &mut Vec<u8>) -> Vec<String> {
+    let mut replies = Vec::new();
+    loop {
+        let Some(start) = buffer.iter().position(|b| !b.is_ascii_whitespace()) else {
+            buffer.clear();
+            break;
+        };
+        buffer.drain(..start);
+        let mut values = serde_json::Deserializer::from_slice(buffer).into_iter::<Value>();
+        let used = match values.next() {
+            Some(Ok(_)) => values.byte_offset(),
+            Some(Err(e)) if e.is_eof() => break,
+            _ => buffer
+                .iter()
+                .position(|b| *b == b'\n')
+                .map_or(buffer.len(), |end| end + 1),
+        };
+        let reply = String::from_utf8_lossy(&buffer[..used]).trim().to_owned();
+        buffer.drain(..used);
+        if !reply.is_empty() {
+            replies.push(reply);
+        }
+    }
+    if buffer.len() > 64 * 1024 {
+        buffer.clear();
+    }
+    replies
+}
+
+fn short_reply(raw: &str) -> String {
+    let reply = serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|v| v.get("Message").and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_else(|| raw.to_owned());
+    reply
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(80)
+        .collect()
 }
 
 impl Relay {
@@ -188,6 +239,7 @@ impl Relay {
                 Err(e) => {
                     let failure = format!("Open Connect send failed ({e}); reconnecting");
                     self.stream = None;
+                    self.replies.clear();
                     update(
                         &self.shared,
                         |s| {
@@ -215,6 +267,7 @@ impl Relay {
             match socket.read(&mut buf) {
                 Ok(0) => {
                     self.stream = None;
+                    self.replies.clear();
                     let target = format!("{}:{}", self.config.host, self.config.port);
                     update(
                         &self.shared,
@@ -223,27 +276,20 @@ impl Relay {
                     );
                 }
                 Ok(n) => {
-                    let raw = String::from_utf8_lossy(&buf[..n]);
-                    let reply = serde_json::from_str::<Value>(&raw)
-                        .ok()
-                        .and_then(|v| v.get("Message").and_then(Value::as_str).map(str::to_owned))
-                        .unwrap_or_else(|| raw.to_string());
-                    let short: String = reply
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                        .chars()
-                        .take(80)
-                        .collect();
-                    update(
-                        &self.shared,
-                        |s| s.sim_reply = short,
-                        Some(format!("sim: {}", raw.trim())),
-                    );
+                    self.replies.extend_from_slice(&buf[..n]);
+                    for raw in drain_replies(&mut self.replies) {
+                        let short = short_reply(&raw);
+                        update(
+                            &self.shared,
+                            |s| s.sim_reply = short,
+                            Some(format!("sim: {raw}")),
+                        );
+                    }
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 Err(e) => {
                     self.stream = None;
+                    self.replies.clear();
                     update(
                         &self.shared,
                         |s| {
@@ -304,6 +350,7 @@ pub fn run(config: Config, shared: Shared, stop: Arc<AtomicBool>) -> Result<(), 
         config: config.clone(),
         shared: shared.clone(),
         stream: None,
+        replies: Vec::new(),
         number: 0,
     };
     let mut pos = None;
@@ -556,6 +603,7 @@ mod tests {
             config,
             shared: shared.clone(),
             stream: None,
+            replies: Vec::new(),
             number: 0,
         };
         let ball = protocol::gspro("[80,10,1,0,0,0,0,0]").unwrap();
@@ -579,6 +627,95 @@ mod tests {
         )
         .unwrap();
         assert_eq!(read_history(name).unwrap().len(), 1);
+    }
+
+    fn options() -> Options {
+        Options {
+            app: "gspro".into(),
+            host: " 127.0.0.1 ".into(),
+            port: "921".into(),
+            log: " C:\\log.txt ".into(),
+            history: "history.json".into(),
+            gspro_port: "921".into(),
+            heartbeat: "1.5".into(),
+        }
+    }
+
+    #[test]
+    fn options_are_trimmed_and_select_the_source_file() {
+        let config = options().validate().unwrap();
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 921);
+        assert_eq!(config.file, "C:\\log.txt");
+        assert_eq!(config.heartbeat, Duration::from_millis(1500));
+        let premier = Options {
+            app: "premier".into(),
+            ..options()
+        };
+        assert_eq!(premier.validate().unwrap().file, "history.json");
+    }
+
+    #[test]
+    fn invalid_options_explain_the_problem() {
+        let error = |change: fn(&mut Options)| {
+            let mut value = options();
+            change(&mut value);
+            value.validate().unwrap_err()
+        };
+        assert!(error(|o| o.app = "other".into()).contains("Choose GSPconnect"));
+        assert!(error(|o| o.host = "  ".into()).contains("host is required"));
+        assert!(error(|o| o.port = "0".into()).contains("Open Connect port"));
+        assert!(error(|o| o.port = "65536".into()).contains("Open Connect port"));
+        assert!(error(|o| o.gspro_port = "abc".into()).contains("GSPconnect port"));
+        assert!(error(|o| o.heartbeat = "0".into()).contains("Heartbeat"));
+        assert!(error(|o| o.heartbeat = "NaN".into()).contains("Heartbeat"));
+        assert!(error(|o| o.heartbeat = "86401".into()).contains("Heartbeat"));
+        assert!(error(|o| o.log = " ".into()).contains("Source file path"));
+    }
+
+    #[test]
+    fn replies_are_reassembled_from_partial_and_combined_reads() {
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(br#"{"Code":200,"Mess"#);
+        assert!(drain_replies(&mut buffer).is_empty());
+        buffer.extend_from_slice(b"age\":\"Ball received\"}\n{\"Code\":201}");
+        assert_eq!(
+            drain_replies(&mut buffer),
+            [
+                r#"{"Code":200,"Message":"Ball received"}"#,
+                r#"{"Code":201}"#
+            ]
+        );
+        assert!(buffer.is_empty());
+        buffer.extend_from_slice(b"plain text\nsecond");
+        assert_eq!(drain_replies(&mut buffer), ["plain text", "second"]);
+        buffer.extend_from_slice(b"{\"Message\":\"");
+        buffer.extend_from_slice(&[b'x'; 70_000]);
+        assert!(drain_replies(&mut buffer).is_empty());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn short_replies_prefer_the_message_and_are_limited() {
+        assert_eq!(
+            short_reply(r#"{"Code":200,"Message":"Ball   received"}"#),
+            "Ball received"
+        );
+        assert_eq!(short_reply("plain\ntext"), "plain text");
+        assert_eq!(short_reply(&"x".repeat(200)).len(), 80);
+    }
+
+    #[test]
+    fn status_remains_usable_after_a_panic() {
+        let shared: Shared = Arc::new(Mutex::new(Snapshot::default()));
+        let poisoned = shared.clone();
+        let _ = thread::spawn(move || {
+            let _guard = poisoned.lock().unwrap();
+            panic!("simulated failure");
+        })
+        .join();
+        update(&shared, |s| s.shots = 3, None);
+        assert_eq!(lock(&shared).shots, 3);
     }
 
     fn json_record(id: &str, speed: u32) -> Value {
